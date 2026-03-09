@@ -1,0 +1,535 @@
+#+title: docma for python
+
+* Documento maestro
+  :PROPERTIES:
+  :header-args: :noweb-ref NOWEB_INCLUDE
+  :END:      
+#+BEGIN_SRC python :tangle common.py :noweb yes :padline no :noweb-ref master
+import os
+import requests
+from io import BytesIO
+from reportlab.lib.utils import ImageReader # <--- IMPORTANTE
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import Table, TableStyle, Spacer
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib import colors
+from reportlab.lib.units import cm
+from flask import current_app
+
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.fonts import addMapping
+
+FONTS_DIR="/srv/emr-rendering-engine/app/assets/fonts"
+
+# 1. Registras cada archivo físico con un nombre único
+pdfmetrics.registerFont(TTFont('calibri', f"{FONTS_DIR}/calibri-regular.ttf"))
+pdfmetrics.registerFont(TTFont('calibri-bold', f"{FONTS_DIR}/calibri-bold.ttf"))
+
+# 2. CREAS LA CONEXIÓN (El "mapeo")
+# Esto le dice a ReportLab: "Cuando uses 'calibri' y veas un <b>, usa 'calibri-bold'"
+pdfmetrics.registerFontFamily('calibri', normal='calibri', bold='calibri-bold', italic='calibri', boldItalic='calibri-bold')
+
+<<NOWEB_INCLUDE>>
+#+END_SRC
+
+
+** crear_tabla_ficha
+#+BEGIN_SRC python
+
+def crear_tabla_ficha(data_filas, col_widths, row_heights):
+    """Función maestra para dar el look 'aireado' a cualquier ficha"""
+    tabla = Table(data_filas, colWidths=col_widths, rowHeights=row_heights)
+    
+    # Estilo base que ya definimos
+    estilo = [
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+    ]
+    
+    # Aplicar gris intercalado automáticamente a las celdas de datos
+    # (Esto se puede sofisticar, pero por ahora lo dejamos manual por ficha)
+    tabla.setStyle(TableStyle(estilo))
+    return tabla
+
+
+
+
+
+#+END_SRC
+** add_background
+
+#+BEGIN_SRC python
+# --- FUNCIÓN PARA EL FONDO EN A4 ---
+def add_background(canvas, doc):
+    canvas.saveState()
+    bg_path = "app/templates/bg_img/hoja01.png"
+    
+    # Dibujamos la imagen exactamente al tamaño A4
+    # A4[0] es el ancho (21cm), A4[1] es el alto (29.7cm)
+    try:
+        canvas.drawImage(bg_path, 0, 0, width=A4[0], height=A4[1], mask='auto')
+        canvas.restoreState()
+    except:
+        print("Error: No se encontró el fondo A4")        
+        canvas.restoreState()
+        
+    
+
+#+END_SRC
+** draw_local_image_absolute
+#+BEGIN_SRC python
+  def draw_local_image_absolute(canvas, file_path, x_cm, y_cm, width_cm, height_cm):
+      """
+      Lee una imagen directamente desde el disco local y la dibuja en una 
+      posición absoluta usando coordenadas FPDF-style (desde arriba hacia abajo).
+      """
+      try:
+          # 1. Validar existencia del archivo
+          if not os.path.exists(file_path):
+              print(f"ERROR: El archivo no existe en la ruta: {file_path}")
+              return
+
+          # 2. Verificar que no esté vacío
+          if os.path.getsize(file_path) < 100:
+              print(f"ADVERTENCIA: El archivo {file_path} parece estar corrupto o vacío.")
+              return
+
+
+          # 3. Preparar el lector de imagen (ReportLab maneja rutas de archivo directamente)
+          # Usamos ImageReader para mayor compatibilidad, similar a tu versión URL
+          img_reader = ImageReader(file_path)
+
+          # 4. CONVERSIÓN DE COORDENADAS (El truco maestro de Cerebro)
+          # ReportLab dibuja desde abajo, FPDF desde arriba.
+          page_height = 29.7 * cm
+          y_reportlab = page_height - (y_cm * cm) - (height_cm * cm)
+
+          # 5. Dibujar en el canvas
+          canvas.drawImage(
+              img_reader, 
+              x_cm * cm, 
+              y_reportlab,
+              width=width_cm * cm, 
+              height=height_cm * cm,
+              mask='auto'
+          )
+
+          print(f"Imagen local dibujada con éxito: {os.path.basename(file_path)} en X:{x_cm} Y:{y_cm}")
+
+      except Exception as e:
+          print(f"ERROR CRÍTICO al procesar imagen local: {str(e)}")
+
+#+END_SRC
+** draw_url_image_absolute
+#+BEGIN_SRC python
+def draw_url_image_absolute(canvas, url, x_cm, y_cm, width_cm, height_cm):
+    """
+    Descarga una imagen de una URL y la dibuja en una posición absoluta
+    usando coordenadas FPDF-style (desde arriba).
+    """
+    try:
+        print(f"Intentando descargar: {url}")
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code != 200:
+            print(f"Error de servidor: Código {response.status_code}")
+            return
+
+        img_data = BytesIO(response.content)
+
+        img_reader = ImageReader(img_data)
+        # Verificamos si el buffer tiene contenido
+        img_size = len(response.content)
+        print(f"Imagen descargada con éxito. Tamaño: {img_size} bytes")
+
+        if img_size < 100: # Si es muy pequeña, algo salió mal
+            print("La imagen parece estar vacía o corrupta.")
+            return
+
+        # COORDENADAS: Asegúrate de que page_height sea correcto
+        page_height = 29.7 * cm 
+        y_reportlab = page_height - (y_cm * cm) - (height_cm * cm)
+        
+        canvas.drawImage(img_reader, x_cm * cm, y_reportlab, 
+                         width=width_cm * cm, height=height_cm * cm, 
+                         mask='auto')
+        print(f"Dibujado en X:{x_cm} Y:{y_cm}")
+
+    except Exception as e:
+        print(f"ERROR CRÍTICO: {str(e)}")
+
+
+#+END_SRC
+
+** draw_page_background
+#+BEGIN_SRC python
+  def draw_page_background(canvas, doc, dataset):
+      canvas.saveState()
+      # Obtenemos el número de página actual
+      page_num = canvas.getPageNumber()
+      # Definimos la base de la ruta
+      base_path = "app/templates/bg_img"
+      # Lógica para elegir la imagen según la página
+      if page_num == 1:
+          img_path = f"{base_path}/hoja01.png"
+          if len(dataset['bgimage'])>0 : canvas.drawImage(img_path, 0, 0, width=A4[0], height=A4[1], mask='auto')        
+      elif page_num == 2:
+          img_path = f"{base_path}/hoja02.png"
+          if len(dataset['bgimage'])>0 : canvas.drawImage(img_path, 0, 0, width=A4[0], height=A4[1], mask='auto')
+      elif page_num == 3:
+          img_path = f"{base_path}/hoja03.png"
+          if len(dataset['bgimage'])>0 : canvas.drawImage(img_path, 0, 0, width=A4[0], height=A4[1], mask='auto')
+
+          url_foto = get_imedic_path('colposcopia',dataset['imedic_data'])
+          draw_local_image_absolute(canvas, url_foto, 11, 5.0, 7, 7) # x=12, y=15
+
+          url_foto = get_imedic_path('schiller',dataset['imedic_data'])
+          draw_local_image_absolute(canvas, url_foto, 11, 13.5, 7, 7) # x=12, y=15
+      elif page_num == 4:
+          img_path = f"{base_path}/hoja04.png"
+          if len(dataset['bgimage'])>0 : canvas.drawImage(img_path, 0, 0, width=A4[0], height=A4[1], mask='auto')
+
+          url_foto = get_imedic_path('frotis',dataset['imedic_data'])
+          draw_local_image_absolute(canvas, url_foto, 11, 6.0, 7.5, 7.5) # x=12, y=15
+
+          if dataset['sede_id']==1 :
+              url_foto = get_imedic_path('pap',dataset['imedic_data'])
+              draw_local_image_absolute(canvas, url_foto, 11, 17.0, 7, 7) # x=12, y=15
+
+              ruta_rubrica = "/srv/emr-rendering-engine/app/assets/formatos/rubrica_dermapat.png"
+          else:
+              ruta_rubrica = "/srv/emr-rendering-engine/app/assets/formatos/doctor_taxa.png"            
+          # Calculamos la posición (según la tabla anterior)
+          x = 14.5 * cm
+          y = 1.7 * cm # 1.7cm desde el borde inferior
+          # Dibujar
+          canvas.drawImage(ruta_rubrica, x, y, width=4.5*cm, height=4.5*cm, mask='auto')
+      elif page_num == 5:
+          img_path = f"{base_path}/hoja05.png"
+
+          if len(dataset['bgimage'])>0 : canvas.drawImage(img_path, 0, 0, width=A4[0], height=A4[1], mask='auto')
+          # Puedes seguir agregando elif para la 04, 05, etc.
+          url_foto = get_imedic_path('eco_utero',dataset['imedic_data'])
+          if len(dataset['bgimage'])>0 : draw_local_image_absolute(canvas, url_foto, 9, 3.2 , 10, 7) # x=12, y=15
+
+          url_foto = get_imedic_path('eco_ovarios',dataset['imedic_data'])
+          if len(dataset['bgimage'])>0 : draw_local_image_absolute(canvas, url_foto, 9, 11.2, 10, 7) # x=12, y=15
+
+          url_foto = get_imedic_path('eco_mamas',dataset['imedic_data'])
+          if len(dataset['bgimage'])>0 : draw_local_image_absolute(canvas, url_foto, 9, 18.7, 10, 7) # x=12, y=15
+      else:
+          # Si llegas a la página 6 o 7 y quieres repetir un fondo genérico:
+
+          img_path = f"{base_path}/hoja06.png" 
+          if len(dataset['bgimage'])>0 : canvas.drawImage(img_path, 0, 0, width=A4[0], height=A4[1], mask='auto')
+
+          # Insertar rúbrica si tenemos el ID del médico
+
+      if len(dataset.get('bgimage'))>0:
+          # Dibujar rectángulo de fondo (gris claro)
+          canvas.setFillColor(colors.lightgrey)
+          canvas.rect(1.7 * 28.35, 1.7 * 28.35, 17 * 28.35, 0.8 * 28.35, fill=1, stroke=0)
+
+          # Texto PACIENTE
+          canvas.setFillColor(colors.black)
+          canvas.setFont('calibri-bold', 14)
+          canvas.drawString(1.9 * 28.35, 1.9 * 28.35, f"PACIENTE: {dataset.get('paciente_nombres')}")
+
+          # Link Web
+          canvas.setFont('calibri-bold', 11)
+          canvas.linkURL("https://www.oncogyn.com.pe", (12 * 28.35, 2 * 28.35, 18 * 28.35, 2.5 * 28.35))
+          canvas.drawRightString(18.3 * 28.35, 1.2 * 28.35, "www.oncogyn.com.pe")
+      else:
+          # Versión sin fondo (Solo nombre)
+          canvas.setFont('calibri-bold', 14)
+          print(dataset.get("paciente_nombres"))
+          canvas.drawString(3 * 28.35, 1.9 * 28.35, dataset.get('paciente_nombres'))
+
+
+      # medico_id = dataset.get('medico_id')
+      # if medico_id:
+      # draw_rubrica_medico(canvas, medico_id)
+
+      canvas.restoreState()
+
+
+#+END_SRC
+
+** draw_page_background_sorrentino
+#+BEGIN_SRC python
+def draw_page_background_sorrentino(canvas, doc, dataset):
+    canvas.saveState()
+    # Obtenemos el número de página actual
+    page_num = canvas.getPageNumber()
+    # Definimos la base de la ruta
+    base_path = "app/templates/bg_img"
+    # Lógica para elegir la imagen según la página
+    if page_num == 1:
+        img_path = f"{base_path}/hoja01.png"
+        if len(dataset['bgimage'])>0 : canvas.drawImage(img_path, 0, 0, width=A4[0], height=A4[1], mask='auto')        
+    elif page_num == 2:
+        img_path = f"{base_path}/hoja02.png"
+        if len(dataset['bgimage'])>0 : canvas.drawImage(img_path, 0, 0, width=A4[0], height=A4[1], mask='auto')
+    elif page_num == 3:
+        img_path = f"{base_path}/hoja03.png"
+        if len(dataset['bgimage'])>0 : canvas.drawImage(img_path, 0, 0, width=A4[0], height=A4[1], mask='auto')
+
+        url_foto = get_imedic_path('colposcopia',dataset['imedic_data'])
+        draw_local_image_absolute(canvas, url_foto, 11, 5.0, 7, 7) # x=12, y=15
+
+        url_foto = get_imedic_path('schiller',dataset['imedic_data'])
+        draw_local_image_absolute(canvas, url_foto, 11, 13.5, 7, 7) # x=12, y=15
+    elif page_num == 4:
+        img_path = f"{base_path}/hoja04.png"
+        if len(dataset['bgimage'])>0 : canvas.drawImage(img_path, 0, 0, width=A4[0], height=A4[1], mask='auto')
+
+        url_foto = get_imedic_path('frotis',dataset['imedic_data'])
+        draw_local_image_absolute(canvas, url_foto, 11, 6.0, 7.5, 7.5) # x=12, y=15
+
+
+        if dataset['sede_id']==1 :
+            url_foto = get_imedic_path('pap',dataset['imedic_data'])
+            draw_local_image_absolute(canvas, url_foto, 11, 17.0, 7, 7) # x=12, y=15
+
+            ruta_rubrica = "/srv/emr-rendering-engine/app/assets/formatos/rubrica_dermapat.png"
+        else:
+            ruta_rubrica = "/srv/emr-rendering-engine/app/assets/formatos/doctor_taxa.png"            
+
+        # Calculamos la posición (según la tabla anterior)
+        x = 14.5 * cm
+        y = 1.7 * cm # 1.7cm desde el borde inferior
+        # Dibujar
+        canvas.drawImage(ruta_rubrica, x, y, width=4.5*cm, height=4.5*cm, mask='auto')
+    elif page_num == 5:
+        img_path = f"{base_path}/hoja05.png"
+
+        if len(dataset['extra'])>0 : 
+            img_path = f"{base_path}/hoja05_extra.png"
+
+        if len(dataset['bgimage'])>0 : canvas.drawImage(img_path, 0, 0, width=A4[0], height=A4[1], mask='auto')
+
+    elif page_num == 6: 
+        img_path = f"{base_path}/hoja06.png" 
+        # canvas.drawImage(img_path, 0, 0, width=A4[0], height=A4[1], mask='auto')        
+    else:
+        # Si llegas a la página 6 o 7 y quieres repetir un fondo genérico:
+        
+        img_path = f"{base_path}/hoja06.png" 
+        if len(dataset['bgimage'])>0 : canvas.drawImage(img_path, 0, 0, width=A4[0], height=A4[1], mask='auto')
+
+        # Insertar rúbrica si tenemos el ID del médico
+    
+    if dataset.get('bgimage'):
+        # Dibujar rectángulo de fondo (gris claro)
+        canvas.setFillColor(colors.lightgrey)
+        canvas.rect(1.7 * 28.35, 1.7 * 28.35, 17 * 28.35, 0.8 * 28.35, fill=1, stroke=0)
+        
+        # Texto PACIENTE
+        canvas.setFillColor(colors.black)
+        canvas.setFont('calibri-bold', 14)
+        canvas.drawString(1.9 * 28.35, 1.9 * 28.35, f"PACIENTE: {dataset.get('paciente_nombres')}")
+            
+        # Link Web
+        canvas.setFont('calibri-bold', 11)
+        canvas.linkURL("https://www.oncogyn.com.pe", (12 * 28.35, 2 * 28.35, 18 * 28.35, 2.5 * 28.35))
+        canvas.drawRightString(18.3 * 28.35, 1.2 * 28.35, "www.oncogyn.com.pe")
+    else:
+        # Versión sin fondo (Solo nombre)
+        canvas.setFont('calibri-bold', 14)
+        canvas.drawString(3 * 28.35, 1.9 * 28.35, dataset.get('paciente_nombres'))
+
+    canvas.restoreState()
+        
+
+#+END_SRC
+
+** get_imedic_path
+#+BEGIN_SRC python
+def get_imedic_path(key, full_imedic_data):
+    """
+    Optimización funcional para localizar rutas de imágenes médicas.
+    """
+    # 1. Mapa de tipos (Diccionario para búsqueda O(1))
+    tipos = {
+        'colposcopia': 1, 'schiller': 2, 'frotis': 3, 'pap': 4,
+        'eco_utero': 5, 'eco_ovarios': 6, 'eco_mamas': 7
+    }
+    
+    ruta_default = '/var/www/docma/img/no-image.jpg'
+    tipo_id = tipos.get(key)
+    
+    if not tipo_id:
+        return ruta_default
+
+    # 2. Búsqueda en el dataset coaxial (Ya unificado por full_trace)
+    # Buscamos el registro que coincida con el tipo
+    registro = next((item for item in full_imedic_data 
+                    if item['imedic_tipo_id'] == tipo_id), None)
+
+    if not registro:
+        return ruta_default
+
+    # 3. Obtener AA y MM de la visita específica de la imagen
+    # En lugar de consultar visitasModel cada vez, hacemos una sola query rápida
+    # res[0] es aa, res[1] es mm
+    archivo_ruta = f"/var/www/docma/{registro['ruta_local']}/{registro['image_hash']}"
+    
+    # /var/www/docma/datafiles/visitas/2026/02/06/291602/66bb06c4a36bce55b6f40fe4943fabf0de86e675
+
+    # 4. Verificación física del archivo
+    if os.path.exists(archivo_ruta):
+        url_image = archivo_ruta
+        return url_image
+
+
+#+END_SRC
+
+** get_imagenes_adicionales
+#+BEGIN_SRC python
+def get_imagenes_adicionales(imedic_data):
+    """
+    Filtra la lista de imágenes para obtener solo los excedentes.
+    Si un tipo de imagen (imedic_tipo_id) ya apareció, las siguientes
+    del mismo tipo se consideran 'adicionales'.
+    """
+    if not imedic_data:
+        return []
+
+    buffer_adicionales = []
+    stack_tipos_vistos = set()
+
+    for row in imedic_data:
+        # Verificamos que tenga un tipo asignado
+        tipo_id = row.get('imedic_tipo_id')
+        
+        if tipo_id in stack_tipos_vistos:
+            # Si el tipo ya existe en el reporte principal, 
+            # esta imagen es para el "shift" (Página 6)
+            buffer_adicionales.append(row)
+        else:
+            # Es la primera vez que vemos este tipo, 
+            # lo marcamos para que no entre al buffer
+            stack_tipos_vistos.add(tipo_id)
+            
+    return buffer_adicionales
+
+#+END_SRC
+
+** draw_imagenes_adicionales
+#+BEGIN_SRC python
+def draw_imagenes_adicionales(canvas, fotos_extra):
+    """
+    Dibuja las imágenes excedentes en páginas nuevas (Página 6 y sucesivas).
+    Mantiene la cuadrícula de 2x3 (6 imágenes por página).
+    """
+    if not fotos_extra:
+        return
+    
+    counter = 0
+    ancho_img = 8.0  # cm (80mm en tu PHP)
+    alto_img = 6.0   # cm (60mm en tu PHP)
+    
+    for img in fotos_extra:
+        # 1. ¿Necesitamos una nueva página? (Cada 6 imágenes)
+        if counter % 6 == 0:
+            canvas.showPage()
+            # Dibujamos el fondo de la hoja 06
+            counter_in_page = 0 # Reiniciamos contador interno de página
+            # 2. Calcular posición X (Alternar entre 20mm y 110mm)
+            # Si es impar (dentro de la página), columna 1. Si es par, columna 2.
+            if (counter_in_page % 2) == 0:
+                pos_x = 2.0  # cm (equivale a 20mm)
+            else:
+                pos_x = 11.0 # cm (equivale a 110mm)
+            # 3. Calcular posición Y (40mm, 110mm o 180mm desde arriba)
+            fila = counter_in_page // 2
+            pos_y = 4.0 + (fila * 7.0) # Cada fila baja 70mm (7cm)            
+            # 4. Obtener la ruta del archivo y dibujar
+            # Usamos la función optimizada que ya conoce el JOIN de aa/mm/dd
+            # Nota: Aquí usamos la data que ya viene en el objeto 'img'
+            archivo_ruta = f"/var/www/docma/{img['ruta_local']}/{img['image_hash']}"                
+            draw_local_image_absolute(canvas, archivo_ruta, pos_x, pos_y, ancho_img, alto_img)            
+            counter += 1
+            counter_in_page += 1
+                
+#+END_SRC
+** get_dynamic_style
+#+BEGIN_SRC python
+def get_dynamic_style(text, base_style):
+    """
+    Replica la lógica de PHP: encoge la fuente si el texto es muy largo
+    para que quepa en el espacio asignado.
+    """
+    length = len(str(text))
+    new_style = ParagraphStyle('Dynamic', parent=base_style)
+    
+    if length > 500:
+        new_style.fontSize = 6
+        new_style.leading = 7 # Espacio entre líneas
+    elif length > 350:
+        new_style.fontSize = 8
+        new_style.leading = 9
+    else:
+        new_style.fontSize = 10
+        new_style.leading = 12
+        
+    return new_style    
+
+
+#+END_SRC
+** draw_rubrica_medico
+#+BEGIN_SRC python
+def draw_rubrica_medico(canvas, medico_id):
+    """
+    Dibuja la rúbrica correspondiente al médico en la posición absoluta.
+    Los valores están convertidos de mm (PHP) a cm (ReportLab).
+    """
+    # Estructura: medico_id: (archivo, offset_x_cm, offset_y_cm, ancho_cm, alto_cm)
+    # Nota: Si el ancho/alto no estaba definido en tu PHP, puse 8x6 por defecto.
+    print(f"medico id {medico_id}")
+    config_rubricas = {
+        5:   ('hilario_rubrica_digital.png', 6.5, 6.7, 8.0, 6.0),
+        165: ('rubrica_sorrentino.png', 6.5, 6.7, 8.0, 6.0),
+        47:  ('rubrica_calderon.png', 7.5, 6.0, 8.0, 6.0),
+        48:  ('rubrica_caytuiro.png', 7.0, 7.0, 8.0, 6.0),
+        50:  ('rubrica_gala.png', 6.0, 6.0, 6.0, 8.0),
+        52:  ('rubrica_huachin.png', 6.0, 7.5, 6.0, 8.0),
+        312: ('rubrica_sanchez_yaya.png', 6.0, 6.5, 8.0, 6.0),
+        55:  ('rubrica_valencia.png', 7.5, 8.0, 8.0, 6.0),
+        57:  ('rubrica_yupan.png', 7.5, 6.0, 8.0, 6.0),
+        122: ('rubrica_chuquispuma.png', 7.5, 6.5, 8.0, 6.0),
+        295: ('rubrica_cardenas.png', 6.0, 4.0, 8.0, 6.0),
+        418: ('rubrica_hilaje.png', 7.2, 8.5, 8.0, 6.0),
+        460: ('rubrica_delcarmen.png', 7.0, 5.5, 8.0, 6.0),
+        472: ('rubrica_alvarez.png', 7.0, 5.5, 8.0, 6.0),
+        496: ('rubrica_bazan.png', 8.0, 7.0, 8.0, 6.0),
+        522: ('rubrica_jara_correcto.png', 8.0, 7.0, 8.0, 6.0),
+        529: ('rubrica_gonzales_medina.png', 8.0, 7.0, 8.0, 6.0),
+        546: ('rubrica_gonzales_rimachy.png', 8.0, 7.0, 8.0, 6.0),
+        506: ('rubrica_vargas_lujan.png', 8.0, 7.0, 8.0, 6.0),
+        43:  ('rubrica_avila.png', 7.0, 8.5, 8.0, 6.0),
+        208: ('rubrica_patricia_leon.png', 8.0, 7.0, 8.0, 6.0),
+        550: ('rubrica_parraga.png', 8.0, 8.5, 8.0, 6.0),
+        553: ('rubrica_torres_moore.png', 7.0, 7.0, 8.0, 6.0),
+        560: ('rubrica_farias.png', 7.0, 6.5, 6.0, 8.0),
+        566: ('rubrica_armas.png', 7.0, 6.0, 8.0, 6.0)
+    }
+
+
+    if medico_id in config_rubricas:
+        archivo, off_x, off_y, w, h = config_rubricas[medico_id]
+        #        ruta = f"/srv/emr-rendering-service/app/assets/formatos/{archivo}"
+        # print("app/assets/formatos/{archivo}")
+        ruta = f"/srv/emr-rendering-engine/app/assets/formatos/{archivo}"
+        # Posicionamiento: AnchoTotal - Offset
+        # A4 estándar en ReportLab son 21.0cm x 29.7cm
+        x = 21.0 - (off_x + 2)
+        y = 29.7 - (off_y - 3 )
+        
+        # Invocamos la función de dibujo que ya tienes en tu common.py
+        draw_local_image_absolute(canvas, ruta, x, y, w, h)
+
+#+END_SRC

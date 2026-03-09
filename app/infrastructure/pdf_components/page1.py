@@ -1,0 +1,478 @@
+# app/infrastructure/pdf_parts/page1.py
+from reportlab.platypus import Table, TableStyle, Paragraph, Spacer
+from .common import crear_tabla_ficha, get_dynamic_style
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.platypus import TableStyle
+# t = Table(rows, colWidths=[2.5*cm, 14.3*cm], rowHeights=[2.5*cm, 1.0*cm, 1.0*cm], hAlign='LEFT')
+
+def render_ficha_paciente(story, data, styles):
+    # Definimos anchos: Datos (2.5, 9.0, 2.5, 2.5) + Espaciadores (0.1)
+    # Total: 2.5 + 0.1 + 9.0 + 0.1 + 2.5 + 0.1 + 2.5 = 16.8 cm
+    col_widths = [2.7*cm, 0.1*cm, 9.0*cm, 0.1*cm, 2.5*cm, 0.1*cm, 2.5*cm]
+    
+    # Usamos una celda vacía "" para los espaciadores
+    data_tabla = [
+        [
+            Paragraph("<b>NOMBRE:</b>", styles['Normal']), "",
+            Paragraph(f"<b>{data.get('ape_pat', '')} {data.get('ape_mat', '')}, {data.get('nombres', '')}</b>".upper(), styles['Normal']), "",
+            Paragraph("<b>DNI:</b>", styles['Normal']), "",
+            Paragraph(f"<b>{data.get('nro_doc', '---')}</b>", styles['Normal'])
+        ],
+        ["", "", "", "", "", "", ""],
+        [
+            Paragraph("<b>FEC. NAC:</b>", styles['Normal']), "",
+            Paragraph(f"<b>{data.get('fec_nac', '')} ({data.get('edad', '0')} años)</b>", styles['Normal']), "",
+            Paragraph("<b>Nro. HC:</b>", styles['Normal']), "",
+            Paragraph(f"<b>{data.get('nro_hc', '---')}</b>", styles['Normal'])
+        ],
+        ["", "", "", "", "", "", ""],
+        [
+            Paragraph("<b>FECHA:</b>", styles['Normal']),"",
+            Paragraph(f"<b>{data.get('fecha', '---')}</b>", styles['Normal']),"",
+            "","" # Celdas vacías para completar la fila
+        ]
+    ]
+    row_heights = [0.5*cm, 0.1*cm, 0.5*cm, 0.1*cm, 0.5*cm]
+    tabla = Table(data_tabla, colWidths=col_widths, rowHeights=row_heights, hAlign='LEFT')
+
+    # El truco del estilo:
+    style = TableStyle([
+        # FILA 1. Fondo gris SOLO a las columnas de datos (0, 2, 4, 6)
+        ('BACKGROUND', (0, 0), (0, 0), colors.Color(0.78, 0.78, 0.78)), # ETIQUETA 1
+        ('BACKGROUND', (2, 0), (2, 0), colors.Color(0.78, 0.78, 0.78)), # VALOR 1 (Gris más claro para contraste)
+        ('BACKGROUND', (4, 0), (4, 0), colors.Color(0.78, 0.78, 0.78)), # ETIQUETA 2
+        ('BACKGROUND', (6, 0), (6, 0), colors.Color(0.78, 0.78, 0.78)), # VALOR 2
+
+        # FILA 3. Fondo gris SOLO a las columnas de datos (0, 2, 4, 6)
+        ('BACKGROUND', (0, 2), (0, 2), colors.Color(0.78, 0.78, 0.78)), # ETIQUETA 1
+        ('BACKGROUND', (2, 2), (2, 2), colors.Color(0.78, 0.78, 0.78)), # VALOR 1 (Gris más claro para contraste)
+        ('BACKGROUND', (4, 2), (4, 2), colors.Color(0.78, 0.78, 0.78)), # ETIQUETA 2
+        ('BACKGROUND', (6, 2), (6, 2), colors.Color(0.78, 0.78, 0.78)), # VALOR 2
+        # FILA 5. Fondo gris SOLO a las columnas de datos (0, 2, 4, 6)
+        ('BACKGROUND', (0, 4), (0, 4), colors.Color(0.78, 0.78, 0.78)), # ETIQUETA 1
+        ('BACKGROUND', (2, 4), (2, 4), colors.Color(0.78, 0.78, 0.78)), # VALOR 1 (Gris más claro para contraste)
+#        ('BACKGROUND', (4, 4), (4, 4), colors.Color(0.78, 0.78, 0.78)), # ETIQUETA 2
+#        ('BACKGROUND', (6, 4), (6, 4), colors.Color(0.78, 0.78, 0.78)), # VALOR 2
+
+        # 2. Alineación y Paddings
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+    ])
+    
+    tabla.setStyle(style)
+    
+    story.append(tabla)
+    story.append(Spacer(1, 0.1 * cm)) # Ln(1) de tu PHP
+
+
+
+def get_hpersonal_string(row):
+    # Traemos la fila usando al buen mudmaster
+    #    row = get_antecedentes_data(paciente_id) # Tu función que ya funciona    
+    if not row:
+        return ""
+    buffer = []
+    # En Python, evaluamos si el campo existe y no está vacío
+    if row.get('cancer'):
+        buffer.append(f"CANCER: {row['cancer']}")        
+    if str(row.get('vih')) == '1':
+        buffer.append("VIH:  POSITIVO")
+    if row.get('habitos_nocivos'):
+        buffer.append(f"HABITOS NOCIVOS: {row['habitos_nocivos']}")
+    if row.get('alergias'):
+        buffer.append(f"ALERGIAS: {row['alergias']}")
+    if row.get('trans_sangre'):
+        buffer.append(f"TRANS. SANGRE: {row['trans_sangre']}")
+    if row.get('patologias'):
+        buffer.append(f"PATOLOGIAS: {row['patologias']}")
+    if row.get('cirugias'):
+        buffer.append(f"CIRUGIAS: {row['cirugias']}")
+    if row.get('tra_fertilidad'):
+        buffer.append(f"TRA ANTERIORES: {row['tra_fertilidad']}")
+    if row.get('info'):
+        buffer.append(f"Otros: {row['info']}")
+    # El equivalente a implode($buffer, ';<br> ')
+    # Usamos '; ' porque ReportLab interpreta <br/> de forma distinta en sus Paragraphs
+    return "; ".join(buffer)
+
+
+def get_hfamiliar_string(row):
+    """
+    Traduce la lógica de toString($paciente_id) de PHP.
+    'row' es el diccionario con los datos del paciente.
+    """
+    buffer = []
+    
+    if row.get('padre'):
+        buffer.append(f"PADRE: {row['padre']}")
+    
+    if row.get('madre'):
+        buffer.append(f"MADRE: {row['madre']}")
+    
+    if row.get('info'):
+        buffer.append(f"OTROS: {row['info']}")
+
+    # implode($buffer, ';<br> ') en PHP es el equivalente a:
+    return "; ".join(buffer)
+
+def render_ficha_antecedentes(story, data, styles):
+    # Título de la sección (Fondo gris según tu PHP)
+    titulo_data = [[Paragraph("<b>ANTECEDENTES</b>", styles['Normal'])]]
+    titulo_tab = Table(titulo_data, colWidths=[17*cm], rowHeights=0.5*cm,hAlign='LEFT')
+    titulo_tab.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.Color(0.78, 0.78, 0.78)),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    story.append(titulo_tab)
+
+    # Aplicamos la lógica de fuente dinámica a cada texto
+    estilo_p = get_dynamic_style(data["personales"], styles['Normal'])
+    estilo_f = get_dynamic_style(data["familiares"], styles['Normal'])
+    estilo_c = get_dynamic_style(data['cancer'], styles['Normal'])
+
+    rows = [
+        # PERSONALES: Altura 25mm (2.5cm)
+        [
+            Paragraph("<b>PERSONALES:</b>", styles['Normal']), 
+            Paragraph(data['personales'], estilo_p)
+        ],
+        # FAMILIARES: Altura 10mm (1.0cm)
+        [
+            Paragraph("<b>FAMILIARES:</b>", styles['Normal']), 
+            Paragraph(data['familiares'], estilo_f)
+        ],
+        # CANCER: Altura 10mm (1.0cm)
+        [
+            Paragraph("<b>CANCER:</b>", styles['Normal']), 
+            Paragraph(data['cancer'], estilo_c)
+        ]
+    ]
+
+    # wc1=25, wc2=143 -> total 168mm (16.8cm)
+    t = Table(rows, colWidths=[2.8*cm, 14.2*cm], rowHeights=[2.5*cm, 1.0*cm, 1.0*cm],hAlign='LEFT')
+    
+    t.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black), # Bordes '1' como en tu PHP
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    
+    story.append(t)
+
+
+def get_dx_colposcopico(row_colpo):
+    import app.infrastructure.database as db
+    """
+    Jerarquía de diagnósticos colposcópicos.
+    Usa get_flag_values para decodificar las máscaras de bits de la tabla maestra.
+    """
+    # Extraemos valores con seguridad
+    info = row_colpo.get('info') or ""
+    hc_miscelaneo_flags = int(row_colpo.get('hc_miscelaneo_flags') or 0)
+    hca_grado2_flags = int(row_colpo.get('hca_grado2_flags') or 0)
+    hca_grado1_flags = int(row_colpo.get('hca_grado1_flags') or 0)
+    sospecha_invasion_flags = int(row_colpo.get('sospecha_invasion_flags') or 0)
+    schiller_bit = str(row_colpo.get('schiller_bit') or '0')
+    hca_otros_flags = int(row_colpo.get('hca_otros_flags') or 0)
+
+    # --- Lógica de Decisión ---
+    if info > '':
+        dx = f'Hallazgos colposcópicos {info}'
+    
+    elif hc_miscelaneo_flags > 0:
+        # Llamada a tu función maestra de bits
+        otros = db.get_flag_values(engine, 'hc_miscelaneo', hc_miscelaneo_flags)
+        dx = f'Hallazgos colposcópicos miscelaneos ({otros})'
+    
+    elif hca_grado2_flags > 0:
+        dx = 'Hallazgos colposcópicos anormales Grado 2 (Compatible con LIEAG)'
+    
+    elif hca_grado1_flags > 0:
+        dx = 'Hallazgos colposcópicos anormales Grado 1 (Compatible con LIEBG)'
+    
+    elif sospecha_invasion_flags > 0:
+        dx = 'Sospecha de invasión '
+    
+    elif schiller_bit == '1':
+        dx = 'Hallazgos colposcópicos no especificos : Yodo negativo '
+    
+    elif hca_otros_flags > 0:
+        otros = db.get_flag_values(engine, 'hca_otros', hca_otros_flags)
+        dx = f'Hallazgos colposcópicos no especificos ({otros})'
+    
+    else:
+        dx = 'HALLAZGOS COLPOSCÓPICOS NORMALES'
+
+    return dx    
+
+
+def render_ficha_cuello_uterino(story, data, styles):
+    """
+    Traducción de ficha_cuello_uterino a Python.
+    data['utero_eco'], data['colposcopia'], data['informes'], data['pap']
+    """
+
+    # 2. Definición de anchos de columna (basado en tus wc1 y wc2)
+    # wc1=50, wc2=118 -> aprox 5cm y 11.8cm
+    col_widths = [5 * cm, 12 * cm]
+
+    # 3. Preparación de los datos de la tabla
+    # Usamos Paragraph dentro de las celdas para que el texto tenga wrap (SmartCell)
+    style_b = styles['Normal'].clone('StyleB', fontName='Calibri-Bold', fontSize=12)
+    style_n = styles['Normal'].clone('StyleN', fontName='Calibri', fontSize=12)
+    
+    header_style = styles['Normal'].clone('Header', fontName='Calibri-Bold', fontSize=12)
+
+    titulo_data = [[Paragraph("<b>CHEQUEO DE CUELLO UTERINO</b>", styles['Normal'])]]
+    titulo_tab = Table(titulo_data, colWidths=[17*cm], rowHeights=0.5*cm,hAlign='LEFT')
+    titulo_tab.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.Color(0.78, 0.78, 0.78)),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    story.append(titulo_tab)
+
+    
+    tabla_datos = [
+        # Filas de la ficha
+        [Paragraph("FACTORES DE RIESGO:", style_b), 
+         Paragraph(data.get('factores_riesgo', ''), style_n)],
+        
+        [Paragraph("EXAMEN DE CERVIX:", style_b), 
+         Paragraph(str(data.get('cervix_info') or ''), style_n)],
+        
+        [Paragraph("FROTIS DE CERVIX:", style_b), 
+         Paragraph(str(data.get('frotis_info') or ''), style_n)],
+        
+        [Paragraph("COLPOSCOPIA:", style_b), 
+         Paragraph(str(data.get('dx_colposcopico') or '').upper(), style_n)],
+        
+        [Paragraph("CITOLOGIA CERVICAL (PAPANICOLAOU):", style_b), 
+         Paragraph(data.get('pap_info'), style_b)] # En tu PHP usas 'b' para el resultado del PAP
+    ]
+
+    # 4. Creación y Estilo de la Tabla
+    row_heights = [0.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1*cm]
+    
+    t = Table(tabla_datos, colWidths=col_widths, rowHeights=row_heights, hAlign='LEFT')
+    
+    t.setStyle(TableStyle([
+        # Bordes (1 es el grosor)
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+        
+        # Alineación
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+    ]))
+
+    story.append(t)
+# ficha utero endometrio
+
+
+
+
+
+
+
+
+def render_ficha_utero_endometrio(story, data, styles):
+    import app.infrastructure.database as db
+    """
+    Traducción de ficha_utero_endometrio.
+    Requiere engine para las llamadas a get_flag_values.
+    """
+    row = data
+    
+    # 1. Obtención de etiquetas mediante Bitmask (get_flag_values)
+    factores_riesgo = db.get_flag_values( 'factores_riesgo', row.get('riesgo_utero_flags'))
+    posicion = db.get_flag_values( 'utero_posicion', row.get('posicion_flag'))
+    ecogenicidad = db.get_flag_values( 'utero_ecogenicidad', row.get('ecogenicidad_flag'))
+    bordes = db.get_flag_values( 'utero_bordes', row.get('bordes_flag'))
+    cervix_estado = db.get_flag_values( 'cervix_estado', row.get('cervix_estado_flag'))
+    endometrio_forma = db.get_flag_values( 'endometrio_forma', row.get('endometrio_forma_flag'))
+    
+    # Lógica de Fondo de Saco
+    liquido = db.get_flag_values( 'fondo_saco_liquido', row.get('fondo_saco_liquido_flag'))
+    fondo_saco_liquido = f"Presencia de líquido: {liquido or 'No'}"
+    
+    dolor = db.get_flag_values( 'fondo_saco_dolor', row.get('fondo_saco_dolor_flag'))
+    fondo_saco_dolor = dolor or 'Sin Dolor'
+
+    # Masas (Asumiendo que tienes una función get_masas similar)
+    utero_masas = data.get('utero_masas', '')
+    cervix_masas = data.get('cervix_masas', '')
+    endometrio_masas = data.get('endometrio_masas', '')
+
+    # 2. Construcción de strings de información (Lógica de Texto)
+    utero_info = ""
+    u_long = row.get('utero_longitud', 0)
+    u_ant = row.get('utero_antero_posterior', 0)
+    u_trans = row.get('utero_transverso', 0)
+
+    if u_long > 0 or u_ant > 0 or u_trans > 0:
+        utero_info = (f"Útero {posicion} de {u_long}mm. x {u_ant}mm. x {u_trans}mm. "
+                      f"En sus diametros longitudinal, anteroposterior y transversal respectivamente. "
+                      f"Ecogenicidad {ecogenicidad} y bordes {bordes}\n")
+    
+    if row.get('utero_info'):
+        utero_info += f"{row['utero_info']}\n"
+
+    # Cervix info
+    cervix_info = ""
+    if row.get('cervix_diametro', 0) > 0:
+        cervix_info = f"{cervix_estado} de {row['cervix_diametro']}mm.\n"
+    if row.get('cervix_info',''):
+        cervix_info += f"{row['cervix_info']}\n"
+    
+    if cervix_info:
+        utero_info += f"Cervix {cervix_info}"
+
+    if u_long > 0 or u_trans > 0:
+        utero_info += f"Fondo de saco de douglas : {fondo_saco_liquido}; Dolor: {fondo_saco_dolor}\n"
+    
+    utero_info += f"{utero_masas} {cervix_masas}"
+
+    # Endometrio info
+    e_grosor = row.get('endometrio_grosor', 0)
+    endometrio_info = f"De {e_grosor}mm. de grosor. " if e_grosor > 0 else ""
+    if endometrio_forma:
+        endometrio_info += f"{endometrio_forma}. "
+    endometrio_info += f"{row.get('endometrio_info', '')} {endometrio_masas}"
+
+    # 3. Renderizado de Tablas
+    style_b = styles['Normal'].clone('StyleB', fontName='Calibri-Bold', fontSize=10, alignment=1)
+    style_n = styles['Normal'].clone('StyleN', fontName='Calibri', fontSize=11, leading = 11)
+    style_small = styles['Normal'].clone('StyleSmall', fontName='Calibri', fontSize=10, leading = 10)
+    style_tiny = styles['Normal'].clone('StyleTiny', fontName='Calibri', fontSize=9, leading = 9)
+    header_style = styles['Normal'].clone('Header', fontName='Calibri-Bold', fontSize=12)
+
+    # Título dinámico
+    tit_examen = "EXAMEN ECOGRÁFICO (ECOGRAFÍA PÉLVICA)" if row.get('tipo_ecoutero_flags') == 2 else "EXAMEN ECOGRÁFICO"
+
+
+    # Definimos anchos: wc1+wc2=60, wc3=108 -> Total 168mm (16.8cm)
+    col_widths = [3 * cm, 14 * cm]
+
+
+    longitud = len(str(utero_info))
+    
+    # Umbrales ajustables según tu diseño
+    if longitud > 650:   # Texto muy largo (ej. una conclusión extensa)
+        st_utero = style_tiny
+    elif longitud > 500: # Texto medio
+         st_utero = style_small
+    else:                # Texto corto
+        st_utero = style_n
+
+    longitud = len(str(endometrio_info))
+    
+    # Umbrales ajustables según tu diseño
+    if longitud > 650:   # Texto muy largo (ej. una conclusión extensa)
+        st_endometrio = style_tiny
+    elif longitud > 500: # Texto medio
+        st_endometrio = style_small
+    else:                # Texto corto
+        st_endometrio = style_n
+
+    tabla_datos = [
+        [Paragraph("CHEQUEO DE UTERO Y ENDOMETRIO", header_style), ""],
+        [Paragraph(f"<b>FACTORES DE RIESGO:</b> {factores_riesgo}", style_n), ""],
+        [Paragraph(tit_examen, style_b), ""],
+        [Paragraph("A. ÚTERO", style_b), Paragraph(utero_info.replace('\n', '<br/>'), st_utero)],
+        [Paragraph("B. ENDOMETRIO", style_b), Paragraph(endometrio_info, st_endometrio)]
+    ]
+
+    t = Table(tabla_datos, colWidths=col_widths, rowHeights=[0.5*cm,0.5*cm,0.5*cm,3.8*cm,3.8*cm], hAlign='LEFT')
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (1, 0), colors.lightgrey),
+        ('SPAN', (0, 0), (1, 0)), # Span título
+        ('SPAN', (0, 1), (1, 1)), # Span examen ecográfico
+        ('SPAN', (0, 2), (1, 2)), # Span examen ecográfico
+        ('ALIGN', (0, 2), (1, 2), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('VALIGN', (0, 0), (1, 2), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]))
+
+    story.append(t)
+    
+
+# FUNCION QUE ARMA TODA LA PAGINA
+    
+def render(story, visita_id, styles):
+    import app.infrastructure.database as db
+    """
+    Encapsula toda la estructura de la Página 1.
+    'data' debe ser un diccionario que contenga 'paciente', 'antecedentes', etc.
+    """
+    visita_data = db.get_visita_data(visita_id)
+    
+    paciente_data = db.get_patient_data(visita_data['paciente_id'])
+
+    hpersonal_data = db.get_hpersonal_data(visita_data['paciente_id']) # Si tienes más consultas
+    hfamiliar_data = db.get_hfamiliar_data(visita_data['paciente_id']) # Si tienes más consultas
+
+    antecedentes_data={"personales":get_hpersonal_string(hpersonal_data),
+                       "familiares":get_hfamiliar_string(hfamiliar_data),
+                       "cancer":hfamiliar_data.get("cancer")}
+
+    
+    utero_ecografia_data=db.get_utero_ecografia_data(visita_id)
+    colpo_data=db.get_colposcopia_data(visita_id)
+
+    informe_data=db.get_informe_data(visita_id)
+
+    # 1. Lógica del PAP (Citología)
+    pap_info = ""
+    paps = db.filter_visita_pap( visita_id)
+    pap_data = paps[0] if paps else None
+
+    if pap_data:
+        if str(pap_data.get('alterado')) == '1':
+            citologia_res = (pap_data.get('citologia_resultado') or "").upper()
+        else:
+            citologia_res = 'NEGATIVO A CÉLULAS NEOPLÁSICAS'
+        
+        pap_info = citologia_res
+        if pap_data.get('citologia_resultado_info'):
+            pap_info += f" : {pap_data['citologia_resultado_info']}"
+
+
+    ficha_cervix_data={'factores_riesgo':db.get_flag_values("factores_riesgo",utero_ecografia_data.get("riesgo_cervix_flags"),"Ausente"),
+                       'cervix_info':colpo_data.get('cervix_info',''),
+                       'frotis_info':informe_data.get('frotis_info',''),
+                       'dx_colposcopico':get_dx_colposcopico(colpo_data),
+                       'pap_info':pap_info}
+    
+    
+    
+    # 1. Ficha del Paciente
+    # (Suponiendo que ya tienes esta función definida en el mismo archivo)
+    render_ficha_paciente(story, visita_data, styles)
+    
+    story.append(Spacer(1, 0.2 * cm))
+
+    # 2. Ficha de Antecedentes
+    render_ficha_antecedentes(story, antecedentes_data, styles)
+
+    # 3. Espaciador final de la sección
+    story.append(Spacer(1, 0.2 * cm))
+
+    render_ficha_cuello_uterino(story, ficha_cervix_data, styles)
+    # 4. Espaciador final de la sección
+    story.append(Spacer(1, 0.2 * cm))
+    render_ficha_utero_endometrio(story, utero_ecografia_data, styles)
+    
+    # Aquí irán las otras 2 fichas que faltan...
+    # render_ficha_nueva_1(story, data['nueva_1'], styles)
+    # render_ficha_nueva_2(story, data['nueva_2'], styles)

@@ -1,0 +1,20 @@
+services:
+  emr-rendering-engine:
+    build: .
+    container_name: emr_rendering_service
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/srv/emr-rendering-engine
+      - /var/www/docma/datafiles:/var/www/docma/datafiles:ro
+      - /var/www/docma/img:/var/www/docma/img:ro
+    env_file:
+      - .env 
+    environment:
+      - ENV=development
+    networks:
+      - emr-network
+
+networks:
+  emr-network:
+    driver: bridge

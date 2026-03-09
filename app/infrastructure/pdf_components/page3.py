@@ -1,0 +1,234 @@
+from reportlab.platypus import Table, TableStyle, Paragraph, Spacer
+from .common import crear_tabla_ficha, get_dynamic_style
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.platypus import TableStyle
+def render_info_ectoscopico(story, colpo, styles):
+    """
+    Traduce info_ectoscopico. 
+    Maneja la descripción de Perineo, Vulva y Vagina.
+    """
+    # 1. Extraemos los datos de la tabla de colposcopia
+
+    perineo = colpo.get('perineo') or ""
+    vulva = colpo.get('vulva') or ""
+    vagina = colpo.get('vagina') or ""
+
+    # 2. Lógica de cálculo de longitud (como en tu PHP)
+    texto_total_len = len(perineo) + len(vulva) + len(vagina)
+    
+    # 3. Definición de Estilos
+    # Si es muy largo (>300), bajamos a 9pt. Si no, 10pt.
+    base_size = 9 if texto_total_len > 300 else 10
+    leading = base_size + 2 # Espaciado entre líneas
+    
+    style_label = styles['Normal'].clone('EctoStyle', 
+                                         fontName='Calibri-Bold', 
+                                         fontSize=base_size, 
+                                         leading=leading)
+
+    # 4. Construcción de la Tabla
+    # Usamos una sola columna de 16.8cm o dos si prefieres, 
+    # pero para respetar tu FPDF usaremos filas independientes.
+    
+    # Preparamos los párrafos
+    p_perineo = Paragraph(f"<b>1. Perineo:</b> {perineo} <br /> <b>2. Vulva:</b> {vulva} <br /> <b>3. Vagina:</b> {vagina}" , style_label)
+    # p_vulva = Paragraph(f"", style_label)
+    # p_vagina = Paragraph(f"<b>3. Vagina:</b> {vagina}", style_label)
+
+    # Creamos la estructura de celdas
+    # Si el texto es corto, añadimos un poco más de espacio (el Ln() de tu PHP)
+    padding_bottom = 2 if texto_total_len > 300 else 8
+
+    tabla_data = [
+        [p_perineo]
+    #    [p_vulva],
+    #    [p_vagina]
+    ]
+
+    t = Table(tabla_data, colWidths=[8.4 * cm],rowHeights=[3*cm], hAlign='LEFT')
+    t.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), padding_bottom),
+    ]))
+
+    story.append(t)
+
+
+def render_info_colposcopia(story, data, styles):
+    colpo = data.get('v121_colposcopia', {})
+    informe = data.get('v121_informes', {})
+
+    # Estilos
+    st_b12 = styles['Normal'].clone('B12', fontName='Calibri-Bold', fontSize=12, leading=14)
+    st_n10 = styles['Normal'].clone('N10', fontName='Calibri', fontSize=10, leading=12)
+    st_n8 = styles['Normal'].clone('N8', fontName='Calibri', fontSize=8, leading=10)
+    
+    # Estilo para los cuadritos (Checkboxes)
+    box_style = TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 1),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 1),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+    ])
+
+    # --- 4. CUELLO UTERINO ---
+    story.append(Paragraph("4. CUELLO UTERINO", st_b12))
+    story.append(Paragraph("&nbsp;&nbsp;A. EVALUACIÓN GENERAL:", st_b12))
+    story.append(Spacer(1, 0.1*cm))
+
+    # - COLPOSCOPIA ADECUADA
+    adecuado = "SÍ" if colpo.get('adecuado_bit') == '1' else "No"
+    story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;- COLPOSCOPIA ADECUADA: {adecuado}", st_n10))
+    story.append(Spacer(1, 0.1*cm))
+
+    # - VISIBILIDAD DE LA UEC
+    story.append(Paragraph("&nbsp;&nbsp;&nbsp;&nbsp;- VISIBILIDAD DE LA UEC:", st_n10))
+    vis = colpo.get('visibilidad_uec_flags', 0)
+    vis = int(vis) if vis is not None else 0
+    # Datos de la mini tabla de visibilidad
+    data_vis = [
+        ['COMPLETA', 'X' if vis & 1 else '', 'PARCIAL', 'X' if vis & 2 else '', 'NO VISIBLE', 'X' if vis & 4 else '']
+    ]
+    t_vis = Table(data_vis, colWidths=[2.5*cm, 0.5*cm, 2.0*cm, 0.5*cm, 2.5*cm, 0.5*cm],hAlign='LEFT')
+#    t_vis.setStyle(box_style)
+    # Aplicar el GRID solo a las columnas de los cuadros (índices 1, 3, 5)
+    t_vis.setStyle(TableStyle([('GRID', (1,0), (1,0), 0.5, colors.black),
+                               ('GRID', (3,0), (3,0), 0.5, colors.black),
+                               ('GRID', (5,0), (5,0), 0.5, colors.black),
+                               ('LEFTPADDING', (0,0), (-1,-1), 5)]))
+    story.append(t_vis)
+
+    # - ZONA DE TRANSFORMACIÓN
+    story.append(Spacer(1, 0.2*cm))
+    story.append(Paragraph("&nbsp;&nbsp;&nbsp;&nbsp;- ZONA DE TRANSFORMACIÓN:", st_n10))
+    zt = colpo.get('tipo_zt_flags', 0)
+    zt = int(zt) if zt is not None else 0
+    data_zt = [
+        ['TIPO 1', 'X' if zt & 1 else '', 'TIPO 2', 'X' if zt & 2 else '', 'TIPO 3', 'X' if zt & 4 else '']
+    ]
+    t_zt = Table(data_zt, colWidths=[1.8*cm, 0.5*cm, 1.8*cm, 0.5*cm, 1.8*cm, 0.5*cm],hAlign='LEFT')
+    t_zt.setStyle(TableStyle([('GRID', (1,0), (1,0), 0.5, colors.black),
+                               ('GRID', (3,0), (3,0), 0.5, colors.black),
+                               ('GRID', (5,0), (5,0), 0.5, colors.black),
+                               ('LEFTPADDING', (0,0), (-1,-1), 5)]))
+    story.append(t_zt)
+
+    # --- B. HALLAZGOS BENIGNOS ---
+    story.append(Spacer(1, 0.2*cm))
+    story.append(Paragraph("&nbsp;&nbsp;B. HALLAZGOS BENIGNOS:", st_b12))
+    story.append(Paragraph(informe.get('cervix_info') or "", st_n10))
+
+    # --- C. HALLAZGOS ANORMALES ---
+    story.append(Spacer(1, 0.2*cm))
+    story.append(Paragraph("&nbsp;&nbsp;C. HALLAZGOS COLPOSCOPICOS ANORMALES:", st_b12))
+    
+    # Lógica de banderas (flags)
+    h1 = int(colpo.get('hca_grado1_flags') or 0)
+    h2 = int(colpo.get('hca_grado2_flags') or 0)
+    ho = int(colpo.get('hca_otros_flags') or 0)
+    
+    eab = 'X' if (h1 & 1 or h2 & 1 or h2 & 2) else ''
+    mos = 'X' if (h1 & 4 or h2 & 8) else ''
+    pun = 'X' if (h1 & 8 or h2 & 16) else ''
+    leu = 'X' if (ho & 1) else ''
+    ero = 'X' if (ho & 2) else ''
+    sch = 'X' if colpo.get('schiller_bit') == '1' else ''
+
+    data_hca = [
+        ['EAB', eab, 'M', mos, 'P', pun, 'L', leu, 'E', ero, 'I(-)', sch]
+    ]
+    # Tabla de checks comprimida
+    t_hca = Table(data_hca, colWidths=[1*cm, 0.5*cm, 0.8*cm, 0.5*cm, 0.8*cm, 0.5*cm, 0.8*cm, 0.5*cm, 0.8*cm, 0.5*cm, 1.2*cm, 0.5*cm],hAlign='LEFT')
+    t_hca.setStyle(TableStyle([
+        ('GRID', (1,0), (1,0), 0.5, colors.black),
+        ('GRID', (3,0), (3,0), 0.5, colors.black),
+        ('GRID', (5,0), (5,0), 0.5, colors.black),
+        ('GRID', (7,0), (7,0), 0.5, colors.black),
+        ('GRID', (9,0), (9,0), 0.5, colors.black),
+        ('GRID', (11,0), (11,0), 0.5, colors.black),
+        ('ALIGN', (0,0), (-1,-1), 'RIGHT'), # Etiquetas a la derecha
+        ('ALIGN', (1,0), (1,0), 'CENTER'), # Cruces al centro
+        ('ALIGN', (3,0), (3,0), 'CENTER'),
+        ('ALIGN', (5,0), (5,0), 'CENTER'),
+        ('ALIGN', (7,0), (7,0), 'CENTER'),
+        ('ALIGN', (9,0), (9,0), 'CENTER'),
+        ('ALIGN', (11,0), (11,0), 'CENTER'),
+    ]))
+    story.append(t_hca)
+
+    story.append(Spacer(1, 0.2*cm))
+    t_hca_info = Table([[Paragraph(colpo.get('hca_info') or "", st_n10)]], colWidths=[8.7*cm],rowHeights=[1.5*cm], hAlign='LEFT')
+    story.append(t_hca_info)
+    
+    # Leyenda final
+    story.append(Spacer(1, 0.2*cm))
+    story.append(Paragraph("EAB: Epitelio Acetoblanco M: Mosaico P: Punteado (Puntillado)", st_n8))
+    story.append(Paragraph("I(-): Iodo Negativo L: Leucoplasia E: Erosión", st_n8))
+    story.append(Paragraph("UEC: Unión escamocolumnar", st_n8))
+
+def get_dx_colposcopico(colpo_data):
+    import app.infrastructure.database as db
+    """
+    Traduce get_dx_colposcopico.
+    Determina el diagnóstico basado en la jerarquía de flags de colposcopía.
+    """
+    row = colpo_data
+    
+    # 1. Información manual tiene prioridad
+    if row.get('info') and str(row.get('info')).strip() != '':
+        return f"Hallazgos colposcópicos {row['info']}"
+    
+    # 2. Hallazgos Misceláneos
+    elif int(row.get('hc_miscelaneo_flags') or 0) > 0:
+        otros = db.get_flag_values( 'hc_miscelaneo', row['hc_miscelaneo_flags'])
+        return f"Hallazgos colposcópicos miscelaneos ({otros})"
+    
+    # 3. Grado 2 (LIEAG - Alto Grado)
+    elif int(row.get('hca_grado2_flags') or 0) > 0:
+        return "Hallazgos colposcópicos anormales Grado 2 (Compatible con LIEAG)"
+    
+    # 4. Grado 1 (LIEBG - Bajo Grado)
+    elif int(row.get('hca_grado1_flags') or 0) > 0:
+        return "Hallazgos colposcópicos anormales Grado 1 (Compatible con LIEBG)"
+    
+    # 5. Sospecha de Invasión
+    elif int(row.get('sospecha_invasion_flags') or 0) > 0:
+        return "Sospecha de invasión"
+    
+    # 6. Test de Schiller (Yodo Negativo)
+    elif row.get('schiller_bit') == '1':
+        return "Hallazgos colposcópicos no especificos : Yodo negativo"
+    
+    # 7. Otros Hallazgos No Específicos
+    elif int(row.get('hca_otros_flags') or 0) > 0:
+        otros = db.get_flag_values( 'hca_otros', row['hca_otros_flags'])
+        return f"Hallazgos colposcópicos no especificos ({otros})"
+    
+    # 8. Por defecto: Normal
+    else:
+        return "HALLAZGOS COLPOSCÓPICOS NORMALES"
+
+def render(story, visita_id, styles):
+    import app.infrastructure.database as db
+    """
+    Encapsula toda la estructura de la Página 1.
+    'data' debe ser un diccionario que contenga 'paciente', 'antecedentes', etc.
+    """
+    #    visita_data = db.get_visita_data(visita_id)
+    colpo_data=db.get_colposcopia_data(visita_id)
+    render_info_ectoscopico(story,colpo_data,styles)
+    
+    story.append(Spacer(1, 2.4 * cm))
+
+    informe_data=db.get_informe_data(visita_id)
+    dataset={'v121_colposcopia':colpo_data,'v121_informes':informe_data}
+    render_info_colposcopia(story,dataset,styles);
+
+    story.append(Spacer(1, 6 * cm))
+    dx_colposcopia=get_dx_colposcopico(colpo_data)
+    story.append( Paragraph(f"<b> - {dx_colposcopia}</b>".upper()))
