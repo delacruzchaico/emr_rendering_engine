@@ -6,3 +6,4 @@ bin/
 obj/
 .terraform/
 terraform.tfstate
+*.org
